@@ -1,3 +1,12 @@
+"""
+Download de Vídeos v2.0.5
+Download de vídeos e áudio de 1000+ sites com redimensionamento para redes sociais
+
+Autor: Rui Casaca
+Data: Novembro 2025
+Licença: MIT
+"""
+
 import os
 import sys
 import threading
@@ -6,15 +15,39 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import yt_dlp
 from pathlib import Path
+import subprocess
+import json
 
 
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 
 
+def get_ffmpeg_path():
+    """
+    Retorna o caminho para o FFmpeg embarcado no executável ou no sistema
+    """
+    # Se estiver executando como executável (PyInstaller)
+    if getattr(sys, 'frozen', False):
+        # Executável: procurar na pasta do .exe
+        base_path = sys._MEIPASS
+        ffmpeg_bundled = os.path.join(base_path, 'ffmpeg_bin', 'ffmpeg.exe')
+        if os.path.exists(ffmpeg_bundled):
+            return ffmpeg_bundled
+    else:
+        # Modo desenvolvimento: procurar na pasta do projeto
+        base_path = os.path.dirname(os.path.abspath(__file__))
+        ffmpeg_local = os.path.join(base_path, 'ffmpeg_bin', 'ffmpeg.exe')
+        if os.path.exists(ffmpeg_local):
+            return ffmpeg_local
+    
+    # Fallback: usar FFmpeg do sistema (se instalado)
+    return 'ffmpeg'
+
+
 class VideoDownloaderApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Descarregador de Vídeos")
+        self.root.title("Descarregador de Vídeos v2.0.5 - por Rui Casaca")
         self.root.geometry("700x750")
         self.root.resizable(False, False)
         self.root.configure(bg='#f5f5f5')
@@ -28,6 +61,22 @@ class VideoDownloaderApp:
         # Variáveis
         self.is_downloading = False
         self.download_type = tk.StringVar(value='video')  # 'video' ou 'audio'
+        self.last_downloaded_file = None  # Para rastrear último vídeo baixado
+        self.last_video_title = None  # Para rastrear título do vídeo
+        
+        # Dimensões das redes sociais (largura x altura)
+        self.social_media_specs = {
+            'Instagram Feed (1:1)': {'width': 1080, 'height': 1080, 'aspect': '1:1'},
+            'Instagram Story': {'width': 1080, 'height': 1920, 'aspect': '9:16'},
+            'Instagram Reels': {'width': 1080, 'height': 1920, 'aspect': '9:16'},
+            'TikTok': {'width': 1080, 'height': 1920, 'aspect': '9:16'},
+            'YouTube Shorts': {'width': 1080, 'height': 1920, 'aspect': '9:16'},
+            'Facebook Feed': {'width': 1280, 'height': 720, 'aspect': '16:9'},
+            'Facebook Story': {'width': 1080, 'height': 1920, 'aspect': '9:16'},
+            'Twitter/X': {'width': 1280, 'height': 720, 'aspect': '16:9'},
+            'LinkedIn': {'width': 1280, 'height': 720, 'aspect': '16:9'},
+            'YouTube (16:9)': {'width': 1920, 'height': 1080, 'aspect': '16:9'},
+        }
         
         # Criar interface
         self.create_widgets()
@@ -439,6 +488,7 @@ class VideoDownloaderApp:
                         'no_warnings': False,
                         'ignoreerrors': False,
                         'noprogress': False,  # Garantir que o progresso é reportado
+                        'noplaylist': True,  # Baixar apenas o vídeo, não a playlist inteira
                     }
                     
                     # Se for áudio, tentar extrair sem ffmpeg (baixa em formato nativo)
@@ -463,6 +513,10 @@ class VideoDownloaderApp:
                         
                         # Fazer download
                         ydl.download([url])
+                        
+                        # Tentar encontrar o arquivo baixado
+                        file_path = self.find_downloaded_file(video_title)
+                        
                         download_success = True
                         break  # Se chegou aqui, download foi bem-sucedido
                         
@@ -496,8 +550,8 @@ class VideoDownloaderApp:
             # Garantir que a barra está em 100% ao terminar
             self.root.after(0, lambda: self.update_progress_bar(100, "✅ Download completo!"))
             
-            # Sucesso
-            self.root.after(0, self.download_success, video_title)
+            # Sucesso - passar file_path também
+            self.root.after(0, lambda: self.download_success(video_title, file_path))
             
         except yt_dlp.utils.DownloadError as e:
             error_msg = str(e)
@@ -544,10 +598,24 @@ class VideoDownloaderApp:
         download_thread = threading.Thread(target=self.download_video, args=(url,), daemon=True)
         download_thread.start()
     
-    def download_success(self, video_title):
+    def download_success(self, video_title, file_path=None):
         """Callback de sucesso"""
         # Garantir que a barra está em 100%
         self.update_progress_bar(100, "✅ Download completo!")
+        
+        # Armazenar informações do último download
+        self.last_video_title = video_title
+        self.last_downloaded_file = file_path
+        
+        # Se file_path não foi fornecido, tentar encontrar
+        if not self.last_downloaded_file:
+            self.last_downloaded_file = self.find_downloaded_file(video_title)
+        
+        # Debug: mostrar o caminho encontrado
+        if self.last_downloaded_file:
+            print(f"✓ Arquivo encontrado: {self.last_downloaded_file}")
+        else:
+            print(f"⚠ Aviso: Arquivo não encontrado para '{video_title}'")
         
         # Mensagem baseada no tipo de download
         download_type = self.download_type.get()
@@ -567,6 +635,13 @@ class VideoDownloaderApp:
             f"{icon} Título: {video_title}\n"
             f"📄 Formato: {file_type}"
         )
+        
+        # Se for vídeo E arquivo encontrado, perguntar sobre redimensionamento
+        if download_type == 'video' and self.last_downloaded_file:
+            self.ask_for_resize()
+        
+        # Finalizar processo
+        self.download_finished()
     
     def download_error(self, error_msg):
         """Callback de erro"""
@@ -581,6 +656,362 @@ class VideoDownloaderApp:
         """Finalizar processo de download"""
         self.is_downloading = False
         self.download_btn.config(state='normal', text="⬇️  Descarregar Vídeo")
+    
+    def find_downloaded_file(self, video_title):
+        """Encontrar o arquivo de vídeo baixado mais recente"""
+        try:
+            import glob
+            import time
+            
+            # Procurar arquivos de vídeo na pasta de downloads
+            video_extensions = ['.mp4', '.mkv', '.webm', '.avi', '.mov']
+            files = []
+            
+            for ext in video_extensions:
+                pattern = os.path.join(self.downloads_folder, f"*{ext}")
+                files.extend(glob.glob(pattern))
+            
+            if not files:
+                print(f"Nenhum arquivo de vídeo encontrado em: {self.downloads_folder}")
+                return None
+            
+            # Obter arquivos modificados nos últimos 60 segundos
+            current_time = time.time()
+            recent_files = [
+                f for f in files 
+                if (current_time - os.path.getmtime(f)) < 60
+            ]
+            
+            if not recent_files:
+                print("Nenhum arquivo recente encontrado (últimos 60 segundos)")
+                # Fallback: retornar o mais recente de todos
+                recent_files = files
+            
+            # Retornar o arquivo mais recente
+            latest_file = max(recent_files, key=os.path.getmtime)
+            return latest_file
+            
+        except Exception as e:
+            print(f"Erro ao encontrar arquivo: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+    
+    def ask_for_resize(self):
+        """Perguntar ao utilizador se quer redimensionar o vídeo"""
+        response = messagebox.askyesno(
+            "Redimensionar para Redes Sociais?",
+            "Deseja redimensionar este vídeo para alguma rede social específica?\n\n"
+            "Isto otimizará o vídeo para as dimensões exatas da plataforma escolhida."
+        )
+        
+        if response:
+            self.show_resize_dialog()
+    
+    def show_resize_dialog(self):
+        """Mostrar diálogo simples e funcional para escolher rede social"""
+        # Criar janela de diálogo
+        resize_window = tk.Toplevel(self.root)
+        resize_window.title("Redimensionar para Redes Sociais")
+        resize_window.geometry("550x650")
+        resize_window.resizable(False, False)
+        resize_window.configure(bg='#f5f5f5')
+        resize_window.transient(self.root)
+        resize_window.grab_set()
+        
+        # Centralizar janela
+        resize_window.update_idletasks()
+        x = (resize_window.winfo_screenwidth() // 2) - (550 // 2)
+        y = (resize_window.winfo_screenheight() // 2) - (650 // 2)
+        resize_window.geometry(f'550x750+{x}+{y}')
+        
+        # Frame principal
+        main_frame = tk.Frame(resize_window, bg='#ffffff', padx=20, pady=20)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Título
+        title_label = tk.Label(
+            main_frame,
+            text="📱 Escolha a Plataforma",
+            font=('Segoe UI', 16, 'bold'),
+            bg='#ffffff',
+            fg='#2c3e50'
+        )
+        title_label.pack(pady=(0, 10))
+        
+        # Subtítulo
+        subtitle_label = tk.Label(
+            main_frame,
+            text="Selecione para onde quer otimizar o vídeo:",
+            font=('Segoe UI', 9),
+            bg='#ffffff',
+            fg='#7f8c8d'
+        )
+        subtitle_label.pack(pady=(0, 20))
+        
+        # Separador
+        separator = tk.Frame(main_frame, height=2, bg='#ecf0f1')
+        separator.pack(fill=tk.X, pady=(0, 15))
+        
+        # Variável para armazenar escolha
+        selected_platform = tk.StringVar()
+        
+        # Frame para opções (com grid layout)
+        options_frame = tk.Frame(main_frame, bg='#ffffff')
+        options_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Lista de plataformas organizada
+        platforms_list = [
+            ('📸 Instagram Feed (1:1)', 'Instagram Feed (1:1)', '1080×1080'),
+            ('📸 Instagram Story', 'Instagram Story', '1080×1920'),
+            ('📸 Instagram Reels', 'Instagram Reels', '1080×1920'),
+            ('🎵 TikTok', 'TikTok', '1080×1920'),
+            ('▶️ YouTube Shorts', 'YouTube Shorts', '1080×1920'),
+            ('👥 Facebook Feed', 'Facebook Feed', '1920×1080'),
+            ('👥 Facebook Story', 'Facebook Story', '1080×1920'),
+            ('🐦 Twitter/X', 'Twitter/X', '1280×720'),
+            ('💼 LinkedIn', 'LinkedIn', '1280×720'),
+            ('🎬 YouTube', 'YouTube', '1920×1080'),
+        ]
+        
+        # Criar radio buttons em lista simples
+        for i, (display_name, value_name, dimensions) in enumerate(platforms_list):
+            # Frame para cada opção
+            option_container = tk.Frame(options_frame, bg='#ffffff')
+            option_container.pack(fill=tk.X, pady=2)
+            
+            # Frame interno com borda
+            option_frame = tk.Frame(
+                option_container,
+                bg='#f8f9fa',
+                highlightbackground='#dee2e6',
+                highlightthickness=1
+            )
+            option_frame.pack(fill=tk.X, padx=5)
+            
+            # Radio button
+            rb = tk.Radiobutton(
+                option_frame,
+                text=display_name,
+                variable=selected_platform,
+                value=value_name,
+                font=('Segoe UI', 10),
+                bg='#f8f9fa',
+                fg='#2c3e50',
+                activebackground='#e9ecef',
+                selectcolor='#ffffff',
+                anchor='w',
+                padx=10,
+                pady=10
+            )
+            rb.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            
+            # Label com dimensões
+            dim_label = tk.Label(
+                option_frame,
+                text=dimensions,
+                font=('Segoe UI', 9),
+                bg='#f8f9fa',
+                fg='#6c757d'
+            )
+            dim_label.pack(side=tk.RIGHT, padx=15)
+            
+            # Efeito hover
+            def on_enter(e, frame=option_frame, rb=rb, lbl=dim_label):
+                frame.config(bg='#e3f2fd', highlightbackground='#2196f3')
+                rb.config(bg='#e3f2fd')
+                lbl.config(bg='#e3f2fd')
+            
+            def on_leave(e, frame=option_frame, rb=rb, lbl=dim_label):
+                frame.config(bg='#f8f9fa', highlightbackground='#dee2e6')
+                rb.config(bg='#f8f9fa')
+                lbl.config(bg='#f8f9fa')
+            
+            option_frame.bind('<Enter>', on_enter)
+            option_frame.bind('<Leave>', on_leave)
+            rb.bind('<Enter>', on_enter)
+            rb.bind('<Leave>', on_leave)
+            dim_label.bind('<Enter>', on_enter)
+            dim_label.bind('<Leave>', on_leave)
+        
+        # Separador antes dos botões
+        separator2 = tk.Frame(main_frame, height=2, bg='#ecf0f1')
+        separator2.pack(fill=tk.X, pady=(15, 15))
+        
+        # Frame de botões
+        buttons_frame = tk.Frame(main_frame, bg='#ffffff')
+        buttons_frame.pack(fill=tk.X)
+        
+        def do_resize():
+            platform = selected_platform.get()
+            if not platform:
+                messagebox.showwarning("Atenção", "Por favor, selecione uma plataforma!")
+                return
+            
+            resize_window.destroy()
+            self.resize_video(platform)
+        
+        # Botão Redimensionar
+        resize_btn = tk.Button(
+            buttons_frame,
+            text="✂️  Redimensionar",
+            font=('Segoe UI', 11, 'bold'),
+            bg='#27ae60',
+            fg='#ffffff',
+            activebackground='#229954',
+            activeforeground='#ffffff',
+            relief=tk.FLAT,
+            cursor='hand2',
+            padx=20,
+            pady=12,
+            command=do_resize
+        )
+        resize_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        
+        # Hover para botão redimensionar
+        def on_resize_enter(e):
+            resize_btn.config(bg='#229954')
+        
+        def on_resize_leave(e):
+            resize_btn.config(bg='#27ae60')
+        
+        resize_btn.bind('<Enter>', on_resize_enter)
+        resize_btn.bind('<Leave>', on_resize_leave)
+        
+        # Botão Cancelar
+        cancel_btn = tk.Button(
+            buttons_frame,
+            text="❌  Cancelar",
+            font=('Segoe UI', 11),
+            bg='#95a5a6',
+            fg='#ffffff',
+            activebackground='#7f8c8d',
+            activeforeground='#ffffff',
+            relief=tk.FLAT,
+            cursor='hand2',
+            padx=20,
+            pady=12,
+            command=resize_window.destroy
+        )
+        cancel_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(5, 0))
+        
+        # Hover para botão cancelar
+        def on_cancel_enter(e):
+            cancel_btn.config(bg='#7f8c8d')
+        
+        def on_cancel_leave(e):
+            cancel_btn.config(bg='#95a5a6')
+        
+        cancel_btn.bind('<Enter>', on_cancel_enter)
+        cancel_btn.bind('<Leave>', on_cancel_leave)
+        
+        # Atalho ESC
+        resize_window.bind('<Escape>', lambda e: resize_window.destroy())
+        
+        # Focar na janela
+        resize_window.focus_force()
+    
+    def resize_video(self, platform):
+        """Redimensionar vídeo para a plataforma escolhida"""
+        if not self.last_downloaded_file or not os.path.exists(self.last_downloaded_file):
+            messagebox.showerror("Erro", "Arquivo de vídeo não encontrado!")
+            return
+        
+        # Obter especificações
+        specs = self.social_media_specs[platform]
+        width = specs['width']
+        height = specs['height']
+        
+        # Criar nome do arquivo de saída
+        base_name = os.path.splitext(self.last_downloaded_file)[0]
+        platform_safe = platform.replace('/', '-').replace(':', '').replace(' ', '_')
+        output_file = f"{base_name}_{platform_safe}.mp4"
+        
+        # Atualizar UI
+        self.status_label.config(
+            text=f"🎬 Redimensionando para {platform}...",
+            style='Status.TLabel'
+        )
+        self.reset_progress_bar()
+        
+        # Executar redimensionamento em thread separada
+        thread = threading.Thread(
+            target=self._do_resize_ffmpeg,
+            args=(self.last_downloaded_file, output_file, width, height, platform),
+            daemon=True
+        )
+        thread.start()
+    
+    def _do_resize_ffmpeg(self, input_file, output_file, width, height, platform):
+        """Executar ffmpeg para redimensionar (usa ffmpeg embarcado ou do sistema)"""
+        try:
+            # Obter caminho do FFmpeg (embarcado ou sistema)
+            ffmpeg_path = get_ffmpeg_path()
+            
+            # Comando ffmpeg para redimensionar mantendo aspect ratio
+            command = [
+                ffmpeg_path,  # Usar FFmpeg embarcado ou do sistema
+                '-i', input_file,
+                '-vf', f'scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2',
+                '-c:a', 'copy',
+                '-y',  # Sobrescrever sem perguntar
+                output_file
+            ]
+            
+            # Executar comando
+            process = subprocess.run(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            
+            if process.returncode == 0:
+                self.root.after(0, lambda: self.resize_success(output_file, platform))
+            else:
+                error_msg = process.stderr
+                if 'not found' in error_msg.lower() or 'não encontrado' in error_msg.lower():
+                    self.root.after(0, lambda: self.resize_error(
+                        "FFmpeg não está instalado!\n\n"
+                        "Para usar esta funcionalidade, instale o FFmpeg:\n"
+                        "https://ffmpeg.org/download.html"
+                    ))
+                else:
+                    self.root.after(0, lambda: self.resize_error(f"Erro ao redimensionar: {error_msg}"))
+        
+        except FileNotFoundError:
+            self.root.after(0, lambda: self.resize_error(
+                "FFmpeg não encontrado!\n\n"
+                "Instale o FFmpeg para usar esta funcionalidade:\n"
+                "https://ffmpeg.org/download.html"
+            ))
+        except Exception as e:
+            self.root.after(0, lambda: self.resize_error(f"Erro inesperado: {str(e)}"))
+    
+    def resize_success(self, output_file, platform):
+        """Callback quando redimensionamento é bem-sucedido"""
+        self.status_label.config(
+            text="✅ Vídeo redimensionado com sucesso!",
+            style='Success.TLabel'
+        )
+        self.update_progress_bar(100, "✅ Redimensionamento completo!")
+        
+        messagebox.showinfo(
+            "Sucesso!",
+            f"Vídeo otimizado para {platform}!\n\n"
+            f"📁 Localização: {output_file}\n\n"
+            f"O vídeo está pronto para publicação!"
+        )
+    
+    def resize_error(self, error_msg):
+        """Callback quando redimensionamento falha"""
+        self.status_label.config(
+            text="❌ Erro no redimensionamento",
+            style='Error.TLabel'
+        )
+        self.reset_progress_bar()
+        
+        messagebox.showerror("Erro", error_msg)
 
 
 def main():

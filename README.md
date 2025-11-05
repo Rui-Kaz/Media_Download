@@ -10,10 +10,20 @@ A modern, user-friendly desktop application for downloading videos and audio fro
 
 ## ✨ Features
 
-- 🎥 **Video Download**: Download videos in MP4 format (best quality available)
+### v2.0 - Social Media Resizing �
+- 📱 **Video Resizing**: Optimize videos for 10 social media platforms
+  - Instagram (Feed, Story, Reels)
+  - TikTok, YouTube Shorts
+  - Facebook, Twitter/X, LinkedIn
+- ✂️ **Smart Resize**: Maintains aspect ratio with intelligent padding
+- 🎬 **FFmpeg Embedded**: Works standalone without external dependencies
+
+### Core Features
+- �🎥 **Video Download**: Download videos in MP4 format (best quality available)
 - 🎵 **Audio Extraction**: Download audio-only in M4A/WEBM format
 - 📊 **Real-time Progress**: Visual progress bar with percentage, speed, and ETA
 - 🌐 **Multi-platform Support**: Works with YouTube, Facebook, Instagram, TikTok, Twitter, and 1000+ sites
+- 🎯 **Single Video Mode**: Downloads only the specific video, not entire playlists (v2.0.1)
 - 🎨 **Modern UI**: Clean, intuitive interface following modern HCI principles
 - 📁 **Smart Downloads**: Automatically saves to your Downloads folder
 - 🚀 **Standalone Executable**: No Python installation required for end users
