@@ -12,7 +12,7 @@ import sys
 import threading
 import warnings
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 import yt_dlp
 from pathlib import Path
 import subprocess
@@ -291,14 +291,27 @@ class VideoDownloaderApp:
         separator2 = ttk.Separator(main_frame, orient='horizontal')
         separator2.pack(fill=tk.X, pady=(0, 15))
         
-        # Botão de Download (destaque)
+        # Frame para botões de ação (lado a lado)
+        buttons_frame = ttk.Frame(main_frame)
+        buttons_frame.pack(fill=tk.X, pady=(5, 10))
+        
+        # Botão de Download (destaque - 70% da largura)
         self.download_btn = ttk.Button(
-            main_frame,
+            buttons_frame,
             text="⬇️  Descarregar Vídeo",
             style='Download.TButton',
             command=self.start_download
         )
-        self.download_btn.pack(fill=tk.X, pady=(5, 0), ipady=5)
+        self.download_btn.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, ipady=5, padx=(0, 5))
+        
+        # Botão para redimensionar vídeo existente (30% da largura)
+        self.resize_only_btn = ttk.Button(
+            buttons_frame,
+            text="Redimensionar apenas",
+            style='Action.TButton',
+            command=self.resize_existing_video
+        )
+        self.resize_only_btn.pack(side=tk.LEFT, fill=tk.Y, ipady=5)
     
     def update_progress_bar(self, percentage, info_text=""):
         """Atualizar barra de progresso moderna"""
@@ -708,6 +721,36 @@ class VideoDownloaderApp:
         if response:
             self.show_resize_dialog()
     
+    def resize_existing_video(self):
+        """Permitir redimensionar um vídeo existente sem download"""
+        # Abrir diálogo para selecionar vídeo
+        video_path = filedialog.askopenfilename(
+            title="Selecione o vídeo para redimensionar",
+            filetypes=[
+                ("Vídeos", "*.mp4 *.avi *.mov *.mkv *.flv *.wmv *.webm"),
+                ("Todos os ficheiros", "*.*")
+            ],
+            initialdir=self.downloads_folder
+        )
+        
+        # Se o utilizador cancelou
+        if not video_path:
+            return
+        
+        # Verificar se o ficheiro existe
+        if not os.path.exists(video_path):
+            messagebox.showerror(
+                "Erro",
+                "O ficheiro selecionado não existe!"
+            )
+            return
+        
+        # Guardar o caminho do vídeo e mostrar diálogo de redimensionamento
+        self.last_downloaded_file = video_path
+        # Extrair nome do ficheiro sem extensão para usar como título
+        self.last_video_title = os.path.splitext(os.path.basename(video_path))[0]
+        self.show_resize_dialog()
+    
     def show_resize_dialog(self):
         """Mostrar diálogo simples e funcional para escolher rede social"""
         # Criar janela de diálogo
@@ -958,12 +1001,21 @@ class VideoDownloaderApp:
                 output_file
             ]
             
+            # Configurar para não mostrar janela do terminal no Windows
+            startupinfo = None
+            if os.name == 'nt':  # Windows
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = subprocess.SW_HIDE
+            
             # Executar comando
             process = subprocess.run(
                 command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True
+                text=True,
+                startupinfo=startupinfo,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
             
             if process.returncode == 0:
