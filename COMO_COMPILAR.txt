@@ -1,0 +1,79 @@
+# 🚀 GUIA RÁPIDO - Criar Executável
+
+## Método 1: Usando o arquivo .BAT (MAIS FÁCIL)
+
+1. **Duplo clique** em `compilar.bat`
+2. Aguarde a compilação (pode demorar 2-5 minutos)
+3. O executável estará em `dist\DescarregadorVideos.exe`
+
+---
+
+## Método 2: Usando Python
+
+```bash
+python build_exe.py
+```
+
+---
+
+## Método 3: Comando Manual
+
+```bash
+pyinstaller --name=DescarregadorVideos --onefile --windowed --clean --noconfirm --collect-all=yt_dlp saca_videos.py
+```
+
+---
+
+## 📦 Após a Compilação
+
+O executável estará em:
+```
+H:\PWEB\dist\DescarregadorVideos.exe
+```
+
+### Características:
+- ✅ Tamanho: ~40-60 MB
+- ✅ Standalone (não precisa Python)
+- ✅ Funciona em qualquer Windows
+- ✅ Todas as bibliotecas incluídas
+
+---
+
+## 🎯 Distribuição
+
+Para distribuir o programa:
+1. Copie apenas o arquivo `DescarregadorVideos.exe`
+2. Envie para quem quiser
+3. A pessoa executa diretamente (sem instalação)
+
+---
+
+## ⚠️ Notas
+
+### Antivírus
+Pode dar falso positivo. Adicione exceção se necessário.
+
+### Primeira Execução
+Pode demorar 5-10 segundos para abrir (é normal).
+
+### Atualizações
+Para atualizar:
+1. Modifique `saca_videos.py`
+2. Execute `compilar.bat` novamente
+3. Distribua o novo .exe
+
+---
+
+## 🐛 Se Algo Der Errado
+
+### Compilação Falha
+- Certifique-se que tem PyInstaller instalado: `pip install pyinstaller`
+- Tente executar como administrador
+
+### .exe Não Abre
+- Execute `compilar.bat` novamente **sem** a opção `--windowed` para ver erros
+- Verifique antivírus
+
+---
+
+**Qualquer dúvida, verifique README_BUILD.md para detalhes completos**

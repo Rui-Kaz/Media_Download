@@ -7,7 +7,7 @@ from tkinter import ttk, messagebox
 import yt_dlp
 from pathlib import Path
 
-# Suprimir avisos de deprecação (você já está usando Python 3.14)
+
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 
 
